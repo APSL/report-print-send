@@ -8,11 +8,8 @@
     "author": "PESOL, Odoo Community Association (OCA)",
     "website": "https://github.com/OCA/report-print-send",
     "license": "AGPL-3",
-    "depends": ["web", "mail"],
+    "depends": ["base_report_to_printer"],
     "data": [
-        "security/security.xml",
-        "views/ir_actions_report.xml",
-        "views/res_users.xml",
         "views/assets.xml",
     ],
     "installable": True,
@@ -20,7 +17,7 @@
     "external_dependencies": {"python": ["pyOpenSSL"]},
     "assets": {
         "web.assets_backend": [
-            "base_report_to_qz_tray/static/src/js/qweb_action_manager.esm.js"
+            "base_report_to_printer_qz/static/src/js/qweb_action_manager.esm.js"
         ],
     },
 }

@@ -34,14 +34,19 @@ export default class PrintActionHandler {
     }
 
     async printOrDownloadReport(action, env) {
+        action.context.skip_printer_exception = true;
         const report_action = await rpc("/web/dataset/call_kw", {
             model: "ir.actions.report",
-            method: "qz_tray_for_report_name",
-            args: [[action.report_name]],
-            kwargs: {},
+            method: "print_action_for_report_name",
+            args:  [[action.report_name]],
+            kwargs: {
+                context: {
+                    ...action.context,
+                },
+            },
         });
 
-        if (report_action && report_action.action === "print") {
+        if (report_action && report_action.action === "server") {
             return this._triggerPrint(
                 action,
                 report_action,

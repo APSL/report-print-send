@@ -114,7 +114,6 @@ class IrActionsReport(models.Model):
             # When no printer is available we can fallback to the default behavior
             # letting the user to manually print the reports.
             try:
-                printer.server_id._open_connection(raise_on_error=True)
                 printer_exception = printer.status in [
                     "error",
                     "server-error",
@@ -198,7 +197,7 @@ class IrActionsReport(models.Model):
         if self.env.context.get("must_skip_send_to_printer"):
             return False
         if (
-            behaviour["action"] == "server"
+            behaviour["action"] == "print"
             and printer
             and document
             and not behaviour.get("printer_exception")
@@ -215,7 +214,7 @@ class IrActionsReport(models.Model):
     def _render_qweb_pdf(self, report_ref, res_ids=None, data=None):
         """Generate a PDF and returns it.
 
-        If the action configured on the report is server, it prints the
+        If the action configured on the report is 'print', it prints the
         generated document as well.
         """
         document, doc_format = super()._render_qweb_pdf(
@@ -236,7 +235,7 @@ class IrActionsReport(models.Model):
     def _render_qweb_text(self, report_ref, docids, data=None):
         """Generate a TEXT file and returns it.
 
-        If the action configured on the report is server, it prints the
+        If the action configured on the report is 'print'', it prints the
         generated document as well.
         """
         document, doc_format = super()._render_qweb_text(
