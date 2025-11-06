@@ -1,7 +1,7 @@
-from odoo import _, api, exceptions, fields, models
+from odoo import fields, models
+
 
 class PrintingPrinter(models.Model):
-
     _inherit = "printing.printer"
 
     backend = fields.Selection(

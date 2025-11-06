@@ -38,7 +38,7 @@ export default class PrintActionHandler {
         const report_action = await rpc("/web/dataset/call_kw", {
             model: "ir.actions.report",
             method: "print_action_for_report_name",
-            args:  [[action.report_name]],
+            args: [[action.report_name]],
             kwargs: {
                 context: {
                     ...action.context,

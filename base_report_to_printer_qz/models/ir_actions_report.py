@@ -3,7 +3,7 @@
 
 import base64
 
-from odoo import api, fields, models
+from odoo import models
 
 
 class IrActionsReport(models.Model):
