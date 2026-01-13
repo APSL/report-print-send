@@ -1,170 +1,103 @@
-/* global qz, fetch, console */
+/* global qz */
+import {_t} from "@web/core/l10n/translation";
 import {registry} from "@web/core/registry";
 import {rpc} from "@web/core/network/rpc";
-import {_t} from "@web/core/l10n/translation";
 
-export default class PrintActionHandler {
-    constructor() {
-        qz.security.setCertificatePromise((resolve, reject) => {
-            fetch("/qz-certificate", {
-                cache: "no-store",
-                headers: {"Content-Type": "text/plain"},
-            })
-                .then((response) =>
-                    response
-                        .text()
-                        .then((text) => (response.ok ? resolve(text) : reject(text)))
-                )
-                .catch(reject);
-        });
+async function QZPrintDispatcher(action, env) {
+    qz.security.setCertificatePromise((resolve, reject) => {
+        fetch("/qz-certificate", {
+            cache: "no-store",
+            headers: {"Content-Type": "text/plain"},
+        })
+            .then((response) =>
+                response
+                    .text()
+                    .then((text) => (response.ok ? resolve(text) : reject(text)))
+            )
+            .catch(reject);
+    });
 
-        qz.security.setSignatureAlgorithm("SHA512");
-        qz.security.setSignaturePromise((toSign) => (resolve, reject) => {
-            fetch(`/qz-sign-message?request=${toSign}`, {
-                cache: "no-store",
-                headers: {"Content-Type": "text/plain"},
-            })
-                .then((response) =>
-                    response
-                        .text()
-                        .then((text) => (response.ok ? resolve(text) : reject(text)))
-                )
-                .catch(reject);
-        });
+    qz.security.setSignatureAlgorithm("SHA512");
+    qz.security.setSignaturePromise((toSign) => (resolve, reject) => {
+        fetch(`/qz-sign-message?request=${toSign}`, {
+            cache: "no-store",
+            headers: {"Content-Type": "text/plain"},
+        })
+            .then((response) =>
+                response
+                    .text()
+                    .then((text) => (response.ok ? resolve(text) : reject(text)))
+            )
+            .catch(reject);
+    });
+    const orm = env.services.orm;
+
+    const print_action = await orm.call(
+        "ir.actions.report",
+        "print_action_for_report_name",
+        [action.report_name],
+        {context: {force_print_to_client: action.context.force_print_to_client}}
+    );
+
+    if (!print_action || print_action.action !== "server") {
+        return false;
+    }
+    const printer_backend = print_action.backend;
+    if (printer_backend !== "qztray") {
+        return false;
     }
 
-    async printOrDownloadReport(action, env) {
-        action.context.skip_printer_exception = true;
-        const report_action = await rpc("/web/dataset/call_kw", {
+    const notification = env.services.notification;
+
+    try {
+        const data = await rpc("/web/dataset/call_kw", {
             model: "ir.actions.report",
-            method: "print_action_for_report_name",
-            args: [[action.report_name]],
-            kwargs: {
-                context: {
-                    ...action.context,
-                },
-            },
+            method: "get_qz_tray_data",
+            args: [
+                print_action.id,
+                action.context.active_ids,
+                "pdf",
+                action.report_name,
+            ],
+            kwargs: {data: action.data || {}},
+            context: action.context,
         });
 
-        if (report_action && report_action.action === "server") {
-            return this._triggerPrint(
-                action,
-                report_action,
-                env?.services?.notification
-            );
-        }
-        return this._triggerDownload(action);
-    }
+        let printerName = print_action.printer_name;
 
-    async _triggerPrint(action, report_action, notificationService) {
-        try {
-            const data = await rpc("/web/dataset/call_kw", {
-                model: "ir.actions.report",
-                method: "get_qz_tray_data",
-                args: [
-                    report_action.id,
-                    action.context.active_ids,
-                    action.report_type === "qweb-pdf"
-                        ? "pdf"
-                        : action.report_type === "py3o"
-                          ? "py3o"
-                          : "text",
-                    action.report_name,
-                ],
-                kwargs: {data: action.data || {}},
-                context: action.context || {},
-            });
-
-            let printer_name = report_action.printer_name;
-            if (printer_name.includes("\\")) {
-                const parts = printer_name.split("\\");
-                const server = parts[0];
-                const printer = parts[1];
-                printer_name = printer;
-                await qz.websocket.connect({host: server});
-            } else {
-                await qz.websocket.connect();
-            }
-
-            let qz_printer_name = null;
-            try {
-                qz_printer_name = await qz.printers.find(printer_name);
-            } catch {
-                if (notificationService) {
-                    notificationService.add(_t("Printer not found: " + printer_name), {
-                        sticky: true,
-                        type: "warning",
-                    });
-                } else {
-                    console.warn("Printer not found:", printer_name);
-                }
-                try {
-                    await qz.websocket.disconnect();
-                } catch {
-                    /* Ignored */
-                }
-                return false;
-            }
-
-            const config = qz.configs.create(qz_printer_name);
-            await qz.print(config, data);
-            await qz.websocket.disconnect();
-
-            if (notificationService) {
-                notificationService.add(
-                    _t("Document sent to the printer: " + qz_printer_name),
-                    {sticky: false, type: "info"}
-                );
-            } else {
-                console.info(_t("Document sent to the printer: " + qz_printer_name));
-            }
-
-            return true;
-        } catch (err) {
-            if (notificationService) {
-                notificationService.add(
-                    _t("Error printing document: " + (err?.message || err)),
-                    {sticky: true, type: "danger"}
-                );
-            } else {
-                console.error("Error printing document:", err);
-            }
-            try {
-                await qz.websocket.disconnect();
-            } catch {
-                /* Ignored */
-            }
-            return false;
-        }
-    }
-
-    async _triggerDownload(action) {
-        let report_type = "";
-        if (action.report_type === "qweb-pdf") {
-            report_type = "pdf";
-        } else if (action.report_type === "py3o") {
-            report_type = "py3o";
+        if (printerName.includes("\\")) {
+            const [host, printer] = printerName.split("\\");
+            printerName = printer;
+            await qz.websocket.connect({host});
         } else {
-            report_type = "text";
+            await qz.websocket.connect();
         }
 
-        return this._downloadReport(action, report_type);
-    }
+        const qzPrinter = await qz.printers.find(printerName);
+        const config = qz.configs.create(qzPrinter);
 
-    async _downloadReport(action, report_type) {
-        return await rpc("/web/action/load", {
-            action_id: action.id,
-            report_type: report_type,
+        await qz.print(config, data);
+        await qz.websocket.disconnect();
+
+        notification.add(_t("Document sent to QZ Tray printer: %s", printerName), {
+            type: "success",
         });
+
+        return true;
+    } catch (err) {
+        try {
+            await qz.websocket.disconnect();
+        } catch {
+            /* Ignore */
+        }
+
+        notification.add(
+            _t("Error printing document via QZ Tray: %s", err?.message || err),
+            {type: "danger", sticky: true}
+        );
+
+        return false;
     }
 }
 
-const handler = new PrintActionHandler();
-
-function print_or_download_report_handler(action, _options, env) {
-    return handler.printOrDownloadReport(action, env);
-}
-
-registry
-    .category("ir.actions.report handlers")
-    .add("print_or_download_report", print_or_download_report_handler, {sequence: 0});
+registry.category("report.print.backends").add("qztray", QZPrintDispatcher);
